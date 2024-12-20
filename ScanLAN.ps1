@@ -1,4 +1,4 @@
-﻿# Import necessary assembly for GUI
+# Import necessary assembly for GUI
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -18,16 +18,14 @@ function Create-Gui {
     # Create the combined title label (program name + subtitle)
     $combinedTitleLabel = New-Object System.Windows.Forms.Label
     $combinedTitleLabel.Text = $combinedTitleText
-    $combinedTitleLabel.Font = New-Object System.Drawing.Font('Comic Sans MS', 18, [System.Drawing.FontStyle]::Bold)  # Comic Sans MS with reduced font size
-    $combinedTitleLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 51, 102)  # Darker Blue (RGB: 0, 51, 102)
+    $combinedTitleLabel.Font = New-Object System.Drawing.Font('Comic Sans MS', 18, [System.Drawing.FontStyle]::Bold)
+    $combinedTitleLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 51, 102)
     $combinedTitleLabel.AutoSize = $true
     $combinedTitleLabel.TextAlign = 'MiddleCenter'
-
-    # Calculate the maximum width the label can have based on the form width and dynamically resize the label
     $form.Controls.Add($combinedTitleLabel)
     
     # Adjust the location and size of the title label
-    $combinedTitleLabel.Width = $form.ClientSize.Width * 0.85  # Limit width to 85% of form size
+    $combinedTitleLabel.Width = $form.ClientSize.Width * 0.85
     $combinedTitleLabel.Location = New-Object System.Drawing.Point([math]::Floor(($form.ClientSize.Width - $combinedTitleLabel.Width) / 2), 20)
 
     # Label for instructions
@@ -73,7 +71,6 @@ function Create-Gui {
     $timer = New-Object System.Windows.Forms.Timer
     $timer.Interval = 2000  # Check every 2 seconds
 
-    # Button to start scanning
     $scanButton.Add_Click({
         $ipStart = $textboxStart.Text
         $ipEnd = $textboxEnd.Text
@@ -91,7 +88,10 @@ function Create-Gui {
 
             # Start periodic scan
             $timer.Add_Tick({
-                Update-IPStatuses $ipList $listBox
+                Start-Job -ScriptBlock {
+                    param ($ipList, $listBox)
+                    Update-IPStatuses $ipList $listBox
+                } -ArgumentList $ipList, $listBox
             })
             $timer.Start()
         } else {
