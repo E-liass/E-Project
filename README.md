@@ -2,7 +2,7 @@
 Networking development on PC - 
 This poweshell script is to discover IPv4 addresses of end devices connected to same LAN
 
-The upcoming project related to is will function same as nmap with additional features.
+The upcoming project related to it will function same as nmap with additional features.
 
 Aim:
 To discover connected device on LAN, 
