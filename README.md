@@ -11,7 +11,12 @@ How to run:
 
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\ScanLAN.ps1
+
+
+ And if it doesn't work or not running, 
+ perhaps for your system security reason, or mistaken
  
+ Please HELP, do not hesitate to suggest changes 
      ------------------------------------------------------
 
 The upcoming project related to it will function same as nmap with additional features.
