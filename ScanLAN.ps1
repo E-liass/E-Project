@@ -23,9 +23,7 @@ function Create-Gui {
     $combinedTitleLabel.AutoSize = $true
     $combinedTitleLabel.TextAlign = 'MiddleCenter'
     $form.Controls.Add($combinedTitleLabel)
-    
-    # Adjust the location and size of the title label
-    $combinedTitleLabel.Width = $form.ClientSize.Width * 0.85
+    $combinedTitleLabel.Width = [int]($form.ClientSize.Width * 0.85)
     $combinedTitleLabel.Location = New-Object System.Drawing.Point([math]::Floor(($form.ClientSize.Width - $combinedTitleLabel.Width) / 2), 20)
 
     # Label for instructions
@@ -34,13 +32,13 @@ function Create-Gui {
     $label1.Location = New-Object System.Drawing.Point(20, 100)
     $label1.Size = New-Object System.Drawing.Size(280, 20)
     $form.Controls.Add($label1)
-    
+
     # Textbox for user to enter Starting IP
     $textboxStart = New-Object System.Windows.Forms.TextBox
     $textboxStart.Location = New-Object System.Drawing.Point(20, 130)
     $textboxStart.Size = New-Object System.Drawing.Size(240, 20)
     $form.Controls.Add($textboxStart)
-    
+
     # Label 'to' between the Start and End IP fields
     $labelTo = New-Object System.Windows.Forms.Label
     $labelTo.Text = 'to'
@@ -53,14 +51,14 @@ function Create-Gui {
     $textboxEnd.Location = New-Object System.Drawing.Point(300, 130)
     $textboxEnd.Size = New-Object System.Drawing.Size(240, 20)
     $form.Controls.Add($textboxEnd)
-    
+
     # Button to start scanning
     $scanButton = New-Object System.Windows.Forms.Button
     $scanButton.Text = 'Start Scanning'
     $scanButton.Location = New-Object System.Drawing.Point(20, 160)
     $scanButton.Size = New-Object System.Drawing.Size(100, 30)
     $form.Controls.Add($scanButton)
-    
+
     # ListBox to show the results
     $listBox = New-Object System.Windows.Forms.ListBox
     $listBox.Location = New-Object System.Drawing.Point(20, 200)
@@ -71,28 +69,39 @@ function Create-Gui {
     $timer = New-Object System.Windows.Forms.Timer
     $timer.Interval = 2000  # Check every 2 seconds
 
+    # Store the event handler so we can remove it if needed
+    $script:timerHandler = $null
+
     $scanButton.Add_Click({
-        $ipStart = $textboxStart.Text
-        $ipEnd = $textboxEnd.Text
-        
+        $ipStart = $textboxStart.Text.Trim()
+        $ipEnd = $textboxEnd.Text.Trim()
+
         # Validate the IP range format
         if (Validate-IP $ipStart -and Validate-IP $ipEnd) {
+            # Ensure start IP is less than or equal to end IP
+            $startInt = [BitConverter]::ToUInt32(([System.Net.IPAddress]::Parse($ipStart)).GetAddressBytes(),0)
+            $endInt = [BitConverter]::ToUInt32(([System.Net.IPAddress]::Parse($ipEnd)).GetAddressBytes(),0)
+            if ($startInt -gt $endInt) {
+                [System.Windows.Forms.MessageBox]::Show('Starting IP must be less than or equal to Ending IP.', 'Invalid IP Range', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+                return
+            }
+
             $listBox.Items.Clear()
             $global:statusList.Clear()
             $ipList = Get-IPRange $ipStart $ipEnd
-            # Add IPs to ListBox and initialize their status
             foreach ($ip in $ipList) {
                 $listBox.Items.Add("$ip - Checking...")
                 $global:statusList[$ip] = "Checking..."
             }
 
-            # Start periodic scan
-            $timer.Add_Tick({
-                Start-Job -ScriptBlock {
-                    param ($ipList, $listBox)
-                    Update-IPStatuses $ipList $listBox
-                } -ArgumentList $ipList, $listBox
-            })
+            # Remove previous event handler if exists
+            if ($script:timerHandler) {
+                $timer.remove_Tick($script:timerHandler)
+            }
+            $script:timerHandler = [System.EventHandler]{
+                Update-IPStatuses $ipList $listBox
+            }
+            $timer.add_Tick($script:timerHandler)
             $timer.Start()
         } else {
             [System.Windows.Forms.MessageBox]::Show('Please enter valid IP addresses (e.g., 101.188.200.0)', 'Invalid IP Address', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
@@ -106,20 +115,23 @@ function Create-Gui {
 # Function to validate IP address format
 function Validate-IP {
     param ([string]$ipAddress)
-    
-    # Ensure IP address format is valid (e.g., 101.188.200.0)
-    return $ipAddress -match '^\d{1,3}(\.\d{1,3}){3}$' -and ($ipAddress.Split('.') | ForEach-Object { [int]$_ -ge 0 -and [int]$_ -le 255 }) -join '' -ne ''
+    if ($ipAddress -match '^\d{1,3}(\.\d{1,3}){3}$') {
+        $parts = $ipAddress.Split('.')
+        foreach ($part in $parts) {
+            if ([int]$part -lt 0 -or [int]$part -gt 255) {
+                return $false
+            }
+        }
+        return $true
+    }
+    return $false
 }
 
 # Function to generate the list of IPs in the range
 function Get-IPRange {
     param([string]$ipStart, [string]$ipEnd)
-
-    # Convert start and end IPs to integers
-    $startInt = [BitConverter]::ToUInt32([IPAddress]::Parse($ipStart).GetAddressBytes(), 0)
-    $endInt = [BitConverter]::ToUInt32([IPAddress]::Parse($ipEnd).GetAddressBytes(), 0)
-
-    # Generate the list of IP addresses between start and end IP
+    $startInt = [BitConverter]::ToUInt32(([System.Net.IPAddress]::Parse($ipStart)).GetAddressBytes(),0)
+    $endInt = [BitConverter]::ToUInt32(([System.Net.IPAddress]::Parse($ipEnd)).GetAddressBytes(),0)
     $ipList = @()
     for ($ip = $startInt; $ip -le $endInt; $ip++) {
         $ipAddress = [System.Net.IPAddress]::new($ip)
@@ -134,18 +146,14 @@ function Update-IPStatuses {
         [array]$ipList,
         [System.Windows.Forms.ListBox]$listBox
     )
-
     foreach ($ip in $ipList) {
         # Ping the IP and get status
-        $status = Test-Connection -ComputerName $ip -Count 1 -Quiet
+        $status = Test-Connection -ComputerName $ip -Count 1 -Quiet -ErrorAction SilentlyContinue
         $statusText = if ($status) { "Connected" } else { "Disconnected" }
-
-        # Update the status if changed
         if ($global:statusList[$ip] -ne $statusText) {
             $global:statusList[$ip] = $statusText
-            # Safely update the ListBox with the new status
-            $sync = [System.Windows.Forms.Control]::FromHandle($listBox.Handle)
-            $sync.Invoke([Action]{
+            # Update the ListBox with the new status on the UI thread
+            $listBox.Invoke([Action]{
                 for ($i = 0; $i -lt $listBox.Items.Count; $i++) {
                     if ($listBox.Items[$i].ToString().StartsWith($ip)) {
                         $listBox.Items[$i] = "$ip - $statusText"
